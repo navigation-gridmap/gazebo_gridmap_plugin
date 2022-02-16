@@ -195,45 +195,76 @@ void GazeboRosGridmap::OnUpdate()
   // Do something every simulation iteration
 }
 
-bool GazeboRosGridmap::is_occupied(
+
+double GazeboRosGridmap::get_surface(
   const ignition::math::Vector3d & central_point,
-  gazebo::physics::RayShapePtr ray,
-  const double leaf_size) 
+  const double min_z, const double max_z,
+  const double resolution,
+  gazebo::physics::RayShapePtr ray)
 {
   ignition::math::Vector3d start_point = central_point;
   ignition::math::Vector3d end_point = central_point;
+  start_point.Z() = min_z;
+  end_point.Z() = max_z;
 
-  double dist;
+  double dist = 0.0;
   std::string entity_name;
+  std::string current_entity;
 
-  start_point.X() += leaf_size / 2;
-  end_point.X() -= leaf_size / 2;
   ray->SetPoints(start_point, end_point);
-  ray->GetIntersection(dist, entity_name);
+  ray->GetIntersection(dist, current_entity);
 
-  if (dist <= leaf_size) return true;
+  return start_point.Z() + dist;
 
-  start_point = central_point;
-  end_point = central_point;
-  start_point.Y() += leaf_size / 2;
-  end_point.Y() -= leaf_size / 2;
-  ray->SetPoints(start_point, end_point);
-  ray->GetIntersection(dist, entity_name);
 
-  if (dist <= leaf_size) return true;
+  //std::cerr << "===============" << std::endl;
+  //do {
+  //  start_point.Z() = start_point.Z() + dist + resolution;
+  //  ray->SetPoints(start_point, end_point);
+  //  ray->GetIntersection(dist, entity_name);
+//
+  //  std::cerr << "Current = " << current_entity << " vs " << entity_name << "   start " << start_point.Z() << "  dist = " << dist << std::endl;
+//
+  //} while (current_entity == entity_name);
+//
+  //if (start_point.Z() - resolution > 0.1) {
+  //  std::cerr << "***********" << start_point.Z() - resolution << std::endl;
+  //}
+  //return start_point.Z() - resolution;
+}
 
-  start_point = central_point;
-  end_point = central_point;
-  start_point.Z() += leaf_size / 2;
-  end_point.Z() -= leaf_size / 2;
-  ray->SetPoints(start_point, end_point);
-  ray->GetIntersection(dist, entity_name);
 
-  if (dist <= leaf_size) return true;
+bool GazeboRosGridmap::is_obstacle(
+  const ignition::math::Vector3d & central_point, double surface,
+  const double min_z, const double max_z,
+  const double resolution,
+  gazebo::physics::RayShapePtr ray)
+{
+  ignition::math::Vector3d start_point = central_point;
+  ignition::math::Vector3d end_point = central_point;
+  
+  std::string entity;
+  double dist;
+
+  for (double z = min_z; z < max_z; z = z + resolution) {
+    start_point.X() = central_point.X() - resolution / 2.0;
+    start_point.Y() = central_point.Y();
+    start_point.Z() = surface + z;
+
+    end_point.X() = end_point.X() - resolution / 2.0;
+    start_point.Y() = central_point.Y();
+    start_point.Z() = surface + z;
+
+    ray->SetPoints(start_point, end_point);
+    ray->GetIntersection(dist, entity);
+
+    if (dist < resolution) {
+      return true;
+    }
+  }
 
   return false;
 }
-
 
 void GazeboRosGridmap::create_gridmap()
 {
@@ -265,30 +296,31 @@ void GazeboRosGridmap::create_gridmap()
       boost::dynamic_pointer_cast<gazebo::physics::RayShape>(
           engine->CreateShape("ray", gazebo::physics::CollisionPtr()));
 
+  // Surface
   for (double x = min_x; x < max_x; x += resolution) {
-    std::cout << (1.0 - ((max_x - x) / size_x)) * 100.0 << " %" << std::endl;
     for (double y = min_y; y < max_y; y += resolution) {
-      bool min_found = false;
-      double surface_height = 100.0;
-      for (double z = min_z; z < max_z; z += resolution) {
-        ignition::math::Vector3d point(x, y, z);
-        if (is_occupied(point, ray, resolution)) {
-          if (!min_found) {  // Surface 
-            min_found = true;
-            surface_height = z;
-            // std::cerr << "Set elevation at (" << x << ", " << y << ", " << z << ")" << std::endl;
-            impl_->gridmap_.atPosition("elevation", grid_map::Position(x, y)) = z;
-          } else {  // Obstacle
-            if (((surface_height + z) < max_height) && ((surface_height + z) > min_height)){
-              // std::cerr << "Set occupancy [" << surface_height <<  ", " << surface_height + z << "] at (" << x << ", " << y << ", " << z << ")" << std::endl;
-              impl_->gridmap_.atPosition("occupancy", grid_map::Position(x, y)) = 254;
-            }
-            continue;
-          }
-        }
+      ignition::math::Vector3d point(x, y, 0);
+      impl_->gridmap_.atPosition("elevation", grid_map::Position(x, y)) = 
+        get_surface(point, min_z, max_z, resolution, ray);
+    }
+  }
+
+  std::cout << "Surface completed " << std::endl;
+
+  // Obstacles
+  for (double x = min_x; x < max_x; x += resolution) {
+    for (double y = min_y; y < max_y; y += resolution) {
+      ignition::math::Vector3d point(x, y, 0);
+      double surface = impl_->gridmap_.atPosition("elevation", grid_map::Position(x, y));
+      if (is_obstacle(point, surface, min_height, max_height, resolution, ray)) {
+        impl_->gridmap_.atPosition("occupancy", grid_map::Position(x, y)) = 254;
       }
     }
   }
+
+  std::cout << "Obstacles completed " << std::endl;
+
+
   std::unique_ptr<grid_map_msgs::msg::GridMap> message;
   message = grid_map::GridMapRosConverter::toMessage( impl_->gridmap_);
   impl_->gridmap_pub_->publish(std::move(message));

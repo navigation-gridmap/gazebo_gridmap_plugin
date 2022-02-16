@@ -27,9 +27,6 @@ namespace gazebo_plugins
 // Forward declaration of private data class.
 class GazeboRosGridmapPrivate;
 
-/// Example ROS-powered Gazebo plugin with some useful boilerplate.
-/// \details This is a `ModelPlugin`, but it could be any supported Gazebo plugin type, such as
-/// System, Visual, GUI, World, Sensor, etc.
 class GazeboRosGridmap : public gazebo::WorldPlugin
 {
 public:
@@ -50,12 +47,18 @@ protected:
   /// Optional callback to be called at every simulation iteration.
   virtual void OnUpdate();
 
-  bool is_occupied(
+  double get_surface(
     const ignition::math::Vector3d & central_point,
-    gazebo::physics::RayShapePtr ray,
-    const double leaf_size);
+    const double min_z, const double max_z,
+    const double resolution,
+    gazebo::physics::RayShapePtr ray);
   void create_gridmap();
 
+  bool is_obstacle(
+    const ignition::math::Vector3d & central_point, double surface,
+    const double min_z, const double max_z,
+    const double resolution,
+    gazebo::physics::RayShapePtr ray);
 private:
   /// Recommended PIMPL pattern. This variable should hold all private
   /// data members.
