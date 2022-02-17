@@ -80,6 +80,7 @@ ament_export_dependencies(gazebo_ros)
 if(BUILD_TESTING)
   add_subdirectory(test)
   find_package(ament_lint_auto REQUIRED)
+  set(ament_cmake_copyright_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
 
