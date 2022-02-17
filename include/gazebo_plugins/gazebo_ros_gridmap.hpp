@@ -15,12 +15,13 @@
 #ifndef GAZEBO_PLUGINS__GAZEBO_ROS_GRIDMAP_HPP_
 #define GAZEBO_PLUGINS__GAZEBO_ROS_GRIDMAP_HPP_
 
+// For std::unique_ptr, could be removed
+#include <memory>
+
 #include "gazebo/physics/physics.hh"
 #include "gazebo/common/common.hh"
 #include "gazebo/gazebo.hh"
 
-// For std::unique_ptr, could be removed
-#include <memory>
 
 namespace gazebo_plugins
 {
@@ -59,6 +60,7 @@ protected:
     const double min_z, const double max_z,
     const double resolution,
     gazebo::physics::RayShapePtr ray);
+
 private:
   /// Recommended PIMPL pattern. This variable should hold all private
   /// data members.

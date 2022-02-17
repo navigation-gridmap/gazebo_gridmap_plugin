@@ -12,15 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
 #include <gazebo/physics/Model.hh>
 #include <gazebo_plugins/gazebo_ros_gridmap.hpp>
 #include <gazebo_ros/node.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <memory>
+#include <string>
+#include <utility>
+
+
 #include "grid_map_ros/grid_map_ros.hpp"
 #include "grid_map_msgs/msg/grid_map.hpp"
-
-#include <memory>
 
 namespace gazebo_plugins
 {
@@ -28,7 +32,8 @@ namespace gazebo_plugins
 class GazeboRosGridmapPrivate
 {
 public:
-  GazeboRosGridmapPrivate() : gridmap_({"elevation", "occupancy"}) {}
+  GazeboRosGridmapPrivate()
+  : gridmap_({"elevation", "occupancy"}) {}
 
   /// Connection to world update event. Callback is called while this is alive.
   gazebo::event::ConnectionPtr update_connection_;
@@ -70,7 +75,7 @@ void GazeboRosGridmap::Load(gazebo::physics::WorldPtr _parent, sdf::ElementPtr s
   // Pass it SDF parameters so common options like namespace and remapping
   // can be handled.
   impl_->ros_node_ = gazebo_ros::Node::Get(sdf);
-  
+
   // The model pointer gives you direct access to the physics object,
   // for example:
   RCLCPP_INFO(impl_->ros_node_->get_logger(), "Loaded %s", _parent->Name().c_str());
@@ -183,7 +188,7 @@ void GazeboRosGridmap::Load(gazebo::physics::WorldPtr _parent, sdf::ElementPtr s
   } else {
     impl_->resolution_ = sdf->GetElement("resolution")->Get<double>();
   }
-  impl_->world_  = _parent;
+  impl_->world_ = _parent;
 }
 
 void GazeboRosGridmap::OnUpdate()
@@ -215,22 +220,6 @@ double GazeboRosGridmap::get_surface(
   ray->GetIntersection(dist, current_entity);
 
   return start_point.Z() + dist;
-
-
-  //std::cerr << "===============" << std::endl;
-  //do {
-  //  start_point.Z() = start_point.Z() + dist + resolution;
-  //  ray->SetPoints(start_point, end_point);
-  //  ray->GetIntersection(dist, entity_name);
-//
-  //  std::cerr << "Current = " << current_entity << " vs " << entity_name << "   start " << start_point.Z() << "  dist = " << dist << std::endl;
-//
-  //} while (current_entity == entity_name);
-//
-  //if (start_point.Z() - resolution > 0.1) {
-  //  std::cerr << "***********" << start_point.Z() - resolution << std::endl;
-  //}
-  //return start_point.Z() - resolution;
 }
 
 
@@ -242,7 +231,7 @@ bool GazeboRosGridmap::is_obstacle(
 {
   ignition::math::Vector3d start_point = central_point;
   ignition::math::Vector3d end_point = central_point;
-  
+
   std::string entity;
   double dist;
 
@@ -293,14 +282,14 @@ void GazeboRosGridmap::create_gridmap()
   gazebo::physics::PhysicsEnginePtr engine = impl_->world_->Physics();
   engine->InitForThread();
   gazebo::physics::RayShapePtr ray =
-      boost::dynamic_pointer_cast<gazebo::physics::RayShape>(
-          engine->CreateShape("ray", gazebo::physics::CollisionPtr()));
+    boost::dynamic_pointer_cast<gazebo::physics::RayShape>(
+    engine->CreateShape("ray", gazebo::physics::CollisionPtr()));
 
   // Surface
   for (double x = min_x; x < max_x; x += resolution) {
     for (double y = min_y; y < max_y; y += resolution) {
       ignition::math::Vector3d point(x, y, 0);
-      impl_->gridmap_.atPosition("elevation", grid_map::Position(x, y)) = 
+      impl_->gridmap_.atPosition("elevation", grid_map::Position(x, y)) =
         get_surface(point, min_z, max_z, resolution, ray);
     }
   }
@@ -320,9 +309,8 @@ void GazeboRosGridmap::create_gridmap()
 
   std::cout << "Obstacles completed " << std::endl;
 
-
   std::unique_ptr<grid_map_msgs::msg::GridMap> message;
-  message = grid_map::GridMapRosConverter::toMessage( impl_->gridmap_);
+  message = grid_map::GridMapRosConverter::toMessage(impl_->gridmap_);
   impl_->gridmap_pub_->publish(std::move(message));
 }
 
