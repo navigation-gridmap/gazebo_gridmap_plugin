@@ -276,7 +276,7 @@ void GazeboRosGridmap::create_gridmap()
 
   impl_->gridmap_.setFrameId("map");
   impl_->gridmap_.setGeometry(
-    grid_map::Length(size_x * 2.0, size_y * 2.0), resolution,
+    grid_map::Length(size_x, size_y), resolution,
     grid_map::Position(center_x, center_y));
 
   gazebo::physics::PhysicsEnginePtr engine = impl_->world_->Physics();
@@ -286,8 +286,9 @@ void GazeboRosGridmap::create_gridmap()
     engine->CreateShape("ray", gazebo::physics::CollisionPtr()));
 
   // Surface
-  for (double x = min_x; x < max_x; x += resolution) {
-    for (double y = min_y; y < max_y; y += resolution) {
+  for (double x = min_x + resolution; x < max_x; x += resolution) {
+    for (double y = min_y + resolution; y < max_y; y += resolution) {
+
       ignition::math::Vector3d point(x, y, 0);
       impl_->gridmap_.atPosition("elevation", grid_map::Position(x, y)) =
         get_surface(point, min_z, max_z, resolution, ray);
@@ -297,8 +298,8 @@ void GazeboRosGridmap::create_gridmap()
   std::cout << "Surface completed " << std::endl;
 
   // Obstacles
-  for (double x = min_x; x < max_x; x += resolution) {
-    for (double y = min_y; y < max_y; y += resolution) {
+  for (double x = min_x + resolution; x < max_x - resolution; x += resolution) {
+    for (double y = min_y + resolution; y < max_y - resolution; y += resolution) {
       ignition::math::Vector3d point(x, y, 0);
       double surface = impl_->gridmap_.atPosition("elevation", grid_map::Position(x, y));
       if (is_obstacle(point, surface, min_height, max_height, resolution, ray)) {
