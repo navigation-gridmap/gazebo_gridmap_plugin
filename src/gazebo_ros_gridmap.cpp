@@ -286,10 +286,10 @@ void GazeboRosGridmap::create_gridmap()
     engine->CreateShape("ray", gazebo::physics::CollisionPtr()));
 
   // Surface
-  
   // iterate the gridmap and fill each cell
-  for (grid_map::GridMapIterator grid_iterator(impl_->gridmap_);  !grid_iterator.isPastEnd(); ++grid_iterator) {
-  
+  for (grid_map::GridMapIterator grid_iterator(impl_->gridmap_); !grid_iterator.isPastEnd();
+    ++grid_iterator)
+  {
     // get the value at the iterator
     grid_map::Position current_pos;
     impl_->gridmap_.getPosition(*grid_iterator, current_pos);
@@ -297,16 +297,13 @@ void GazeboRosGridmap::create_gridmap()
 
     // get the height at this point
     impl_->gridmap_.atPosition("elevation", current_pos) =
-        get_surface(point, min_z, max_z, resolution, ray);
-
+      get_surface(point, min_z, max_z, resolution, ray);
   }
 
   std::cout << "Surface completed " << std::endl;
 
   // Obstacles
-
-  for (grid_map::GridMapIterator obs_it(impl_->gridmap_);  !obs_it.isPastEnd(); ++obs_it) {
-  
+  for (grid_map::GridMapIterator obs_it(impl_->gridmap_); !obs_it.isPastEnd(); ++obs_it) {
     // get the value at the iterator
     grid_map::Position current_pos;
     impl_->gridmap_.getPosition(*obs_it, current_pos);
@@ -315,11 +312,9 @@ void GazeboRosGridmap::create_gridmap()
     double surface = impl_->gridmap_.atPosition("elevation", current_pos);
     if (is_obstacle(point, surface, min_height, max_height, resolution, ray)) {
       impl_->gridmap_.atPosition("occupancy", current_pos) = 254;
+    } else {
+      impl_->gridmap_.atPosition("occupancy", current_pos) = 1.0;  // free space
     }
-    else{
-      impl_->gridmap_.atPosition("occupancy", current_pos) = 1.0; // free space
-    }
-
   }
 
   std::cout << "Obstacles completed " << std::endl;
