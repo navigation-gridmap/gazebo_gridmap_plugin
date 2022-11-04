@@ -64,6 +64,7 @@ protected:
     const ignition::math::Vector3d & central_point,
     const double resolution,
     gazebo::physics::RayShapePtr ray);
+
 private:
   /// Recommended PIMPL pattern. This variable should hold all private
   /// data members.

@@ -13,24 +13,24 @@
 // limitations under the License.
 
 
-#include <gazebo/physics/Model.hh>
-#include <gazebo_plugins/gazebo_ros_gridmap.hpp>
-#include <gazebo_ros/node.hpp>
-#include <rclcpp/rclcpp.hpp>
 #include <octomap/octomap.h>
-
-#include <octomap_msgs/msg/octomap.hpp>
-#include "octomap_msgs/conversions.h"
-
-#include "octomap_ros/conversions.hpp"
 
 #include <memory>
 #include <string>
 #include <utility>
 
 
+#include <gazebo/physics/Model.hh>
+#include <gazebo_plugins/gazebo_ros_gridmap.hpp>
+#include <gazebo_ros/node.hpp>
+#include <rclcpp/rclcpp.hpp>
+
 #include "grid_map_ros/grid_map_ros.hpp"
 #include "grid_map_msgs/msg/grid_map.hpp"
+
+#include <octomap_msgs/msg/octomap.hpp>
+#include "octomap_msgs/conversions.h"
+#include "octomap_ros/conversions.hpp"
 
 namespace gazebo_plugins
 {
@@ -384,23 +384,24 @@ bool GazeboRosGridmap::voxel_is_obstacle(
   ignition::math::Vector3d end_point_z = central_point;
 
   // X line
-  start_point_x.X() = start_point_x.X() - resolution/2;
-  end_point_x.X() = end_point_x.X() + resolution/2;
+  start_point_x.X() = start_point_x.X() - resolution / 2;
+  end_point_x.X() = end_point_x.X() + resolution / 2;
   // Y line
-  start_point_y.Y() = start_point_y.Y() - resolution/2;
-  end_point_y.Y() = end_point_y.Y() + resolution/2;
+  start_point_y.Y() = start_point_y.Y() - resolution / 2;
+  end_point_y.Y() = end_point_y.Y() + resolution / 2;
   // Z line
-  start_point_z.Z() = start_point_z.Z() - resolution/2;
-  end_point_z.Z() = end_point_z.Z() + resolution/2;
-  
+  start_point_z.Z() = start_point_z.Z() - resolution / 2;
+  end_point_z.Z() = end_point_z.Z() + resolution / 2;
+
   bool collision_x = ray_collision(start_point_x, end_point_x, resolution, ray);
   bool collision_y = ray_collision(start_point_y, end_point_y, resolution, ray);
   bool collision_z = ray_collision(start_point_z, end_point_z, resolution, ray);
-  return collision_x || collision_y || collision_z; // returns true if is there a collision in any axis 
+  // returns true if is there a collision in any axis
+  return collision_x || collision_y || collision_z;
 }
 
-void GazeboRosGridmap::create_octomap(){
-
+void GazeboRosGridmap::create_octomap()
+{
   gazebo::physics::PhysicsEnginePtr engine = impl_->world_->Physics();
   engine->InitForThread();
   gazebo::physics::RayShapePtr ray =
@@ -421,10 +422,10 @@ void GazeboRosGridmap::create_octomap(){
 
   std::cout << "Creating octomap" << std::endl;
 
-  for (double i = min_x; i < max_x; i += resolution){
-    for (double j = min_y; j < max_y; j += resolution){
-      for (double k = min_z; k < max_z; k += resolution){
-        if (voxel_is_obstacle(ignition::math::Vector3d(i, j, k), resolution, ray)){
+  for (double i = min_x; i < max_x; i += resolution) {
+    for (double j = min_y; j < max_y; j += resolution) {
+      for (double k = min_z; k < max_z; k += resolution) {
+        if (voxel_is_obstacle(ignition::math::Vector3d(i, j, k), resolution, ray)) {
           impl_->octomap_->updateNode(i, j, k, true);
         }
       }
@@ -439,7 +440,6 @@ void GazeboRosGridmap::create_octomap(){
   message.header.frame_id = "map";
   message.header.stamp = impl_->ros_node_->get_clock()->now();
   impl_->octomap_pub_->publish(message);
-
 }
 
 // Register this plugin with the simulator
