@@ -17,6 +17,12 @@
 #include <gazebo_plugins/gazebo_ros_gridmap.hpp>
 #include <gazebo_ros/node.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <octomap/octomap.h>
+
+#include <octomap_msgs/msg/octomap.hpp>
+#include "octomap_msgs/conversions.h"
+
+#include "octomap_ros/conversions.hpp"
 
 #include <memory>
 #include <string>
@@ -44,9 +50,12 @@ public:
   gazebo::physics::WorldPtr world_;
   bool gridmap_created_{false};
   grid_map::GridMap gridmap_;
+  bool octomap_created_{false};
+  std::unique_ptr<octomap::OcTree> octomap_;
 
   double center_x_;
   double center_y_;
+  double center_z_;
   double min_scan_x_;
   double min_scan_y_;
   double min_scan_z_;
@@ -58,6 +67,7 @@ public:
   double resolution_;
 
   rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr gridmap_pub_;
+  rclcpp::Publisher<octomap_msgs::msg::Octomap>::SharedPtr octomap_pub_;
 };
 
 GazeboRosGridmap::GazeboRosGridmap()
@@ -88,6 +98,9 @@ void GazeboRosGridmap::Load(gazebo::physics::WorldPtr _parent, sdf::ElementPtr s
   impl_->gridmap_pub_ = impl_->ros_node_->create_publisher<grid_map_msgs::msg::GridMap>(
     "grid_map", rclcpp::QoS(1).transient_local());
 
+  impl_->octomap_pub_ = impl_->ros_node_->create_publisher<octomap_msgs::msg::Octomap>(
+    "octomap", rclcpp::QoS(1).transient_local());
+
   auto logger = impl_->ros_node_->get_logger();
 
   if (!sdf->HasElement("center_x")) {
@@ -106,6 +119,14 @@ void GazeboRosGridmap::Load(gazebo::physics::WorldPtr _parent, sdf::ElementPtr s
     impl_->center_y_ = 0.0;
   } else {
     impl_->center_y_ = sdf->GetElement("center_y")->Get<double>();
+  }
+  if (!sdf->HasElement("center_z")) {
+    RCLCPP_INFO(
+      logger, "Gidmap plugin missing <center_z> wasn't set,"
+      "therefore it's been set as '0.0'.");
+    impl_->center_z_ = 0.0;
+  } else {
+    impl_->center_z_ = sdf->GetElement("center_z")->Get<double>();
   }
 
   if (!sdf->HasElement("min_scan_x")) {
@@ -196,6 +217,11 @@ void GazeboRosGridmap::OnUpdate()
   if (!impl_->gridmap_created_) {
     impl_->gridmap_created_ = true;
     create_gridmap();
+  }
+
+  if (!impl_->octomap_created_) {
+    impl_->octomap_created_ = true;
+    create_octomap();
   }
   // Do something every simulation iteration
 }
@@ -322,6 +348,79 @@ void GazeboRosGridmap::create_gridmap()
   std::unique_ptr<grid_map_msgs::msg::GridMap> message;
   message = grid_map::GridMapRosConverter::toMessage(impl_->gridmap_);
   impl_->gridmap_pub_->publish(std::move(message));
+}
+// @brief a ray is casted from the bottom of the cube to the top by the center
+//      to check occupancy
+// @param central_point center of the voxel to check
+// @param resolution size of the cube to check
+// @returns true if the cube centered in central_point and size resolution
+//          is occupied, false otherwise
+bool GazeboRosGridmap::voxel_is_obstacle(
+  const ignition::math::Vector3d & central_point,
+  const double resolution,
+  gazebo::physics::RayShapePtr ray)
+{
+  ignition::math::Vector3d start_point = central_point;
+  ignition::math::Vector3d end_point = central_point;
+
+  // bottom point
+  start_point.Z() = start_point.Z() - resolution/2;
+  end_point.Z() = end_point.Z() + resolution/2;
+  
+  std::string entity;
+  double dist;
+
+  ray->SetPoints(start_point, end_point);
+  ray->GetIntersection(dist, entity);
+
+  if (dist < resolution){
+    return true;
+  }
+
+  return false;
+}
+
+void GazeboRosGridmap::create_octomap(){
+
+  gazebo::physics::PhysicsEnginePtr engine = impl_->world_->Physics();
+  engine->InitForThread();
+  gazebo::physics::RayShapePtr ray =
+    boost::dynamic_pointer_cast<gazebo::physics::RayShape>(
+    engine->CreateShape("ray", gazebo::physics::CollisionPtr()));
+
+  double & resolution = impl_->resolution_;
+  // double & max_height = impl_->max_height_;
+  // double & min_height = impl_->min_height_;
+  double & min_x = impl_->min_scan_x_;
+  double & min_y = impl_->min_scan_y_;
+  double & min_z = impl_->min_scan_z_;
+  double & max_x = impl_->max_scan_x_;
+  double & max_y = impl_->max_scan_y_;
+  double & max_z = impl_->max_scan_z_;
+
+  impl_->octomap_ = std::make_unique<octomap::OcTree>(resolution);
+
+  std::cout << "Creating octomap" << std::endl;
+
+  for (double i = min_x; i < max_x; i += resolution){
+    for (double j = min_y; j < max_y; j += resolution){
+      for (double k = min_z; k < max_z; k += resolution){
+        if (voxel_is_obstacle(ignition::math::Vector3d(i, j, k), resolution, ray)){
+          impl_->octomap_->updateNode(i, j, k, true);
+        }
+      }
+    }
+  }
+
+  std::cout << "Octomap completed" << std::endl;
+
+  octomap_msgs::msg::Octomap message;
+
+  octomap_msgs::fullMapToMsg(*(impl_->octomap_), message);
+  message.header.frame_id = "map";
+  message.header.stamp = impl_->ros_node_->get_clock()->now();
+  impl_->octomap_pub_->publish(message);
+
 }
 
 // Register this plugin with the simulator

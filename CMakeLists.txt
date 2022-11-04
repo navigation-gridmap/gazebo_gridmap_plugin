@@ -40,6 +40,9 @@ find_package(tf2_ros REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(grid_map_ros REQUIRED)
 find_package(grid_map_msgs REQUIRED)
+find_package(octomap REQUIRED)
+find_package(octomap_msgs REQUIRED)
+find_package(octomap_ros REQUIRED)
 
 link_directories(${gazebo_dev_LIBRARY_DIRS})
 
@@ -67,6 +70,9 @@ ament_target_dependencies(gazebo_ros_gridmap
   "grid_map_ros"
   "grid_map_msgs"
   "grid_map_core"
+  "octomap_msgs"
+  "octomap_ros"
+  "octomap"
 )
 ament_export_libraries(gazebo_ros_gridmap)
 
