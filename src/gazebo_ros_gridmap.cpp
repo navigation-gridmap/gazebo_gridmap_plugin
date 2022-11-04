@@ -349,6 +349,22 @@ void GazeboRosGridmap::create_gridmap()
   message = grid_map::GridMapRosConverter::toMessage(impl_->gridmap_);
   impl_->gridmap_pub_->publish(std::move(message));
 }
+
+bool ray_collision(
+  const ignition::math::Vector3d & start,
+  const ignition::math::Vector3d & end,
+  const double min_dist,
+  gazebo::physics::RayShapePtr ray)
+{
+  std::string entity;
+  double dist;
+
+  ray->SetPoints(start, end);
+  ray->GetIntersection(dist, entity);
+
+  return dist < min_dist;
+}
+
 // @brief a ray is casted from the bottom of the cube to the top by the center
 //      to check occupancy
 // @param central_point center of the voxel to check
@@ -360,24 +376,27 @@ bool GazeboRosGridmap::voxel_is_obstacle(
   const double resolution,
   gazebo::physics::RayShapePtr ray)
 {
-  ignition::math::Vector3d start_point = central_point;
-  ignition::math::Vector3d end_point = central_point;
+  ignition::math::Vector3d start_point_x = central_point;
+  ignition::math::Vector3d end_point_x = central_point;
+  ignition::math::Vector3d start_point_y = central_point;
+  ignition::math::Vector3d end_point_y = central_point;
+  ignition::math::Vector3d start_point_z = central_point;
+  ignition::math::Vector3d end_point_z = central_point;
 
-  // bottom point
-  start_point.Z() = start_point.Z() - resolution/2;
-  end_point.Z() = end_point.Z() + resolution/2;
+  // X line
+  start_point_x.X() = start_point_x.X() - resolution/2;
+  end_point_x.X() = end_point_x.X() + resolution/2;
+  // Y line
+  start_point_y.Y() = start_point_y.Y() - resolution/2;
+  end_point_y.Y() = end_point_y.Y() + resolution/2;
+  // Z line
+  start_point_z.Z() = start_point_z.Z() - resolution/2;
+  end_point_z.Z() = end_point_z.Z() + resolution/2;
   
-  std::string entity;
-  double dist;
-
-  ray->SetPoints(start_point, end_point);
-  ray->GetIntersection(dist, entity);
-
-  if (dist < resolution){
-    return true;
-  }
-
-  return false;
+  bool collision_x = ray_collision(start_point_x, end_point_x, resolution, ray);
+  bool collision_y = ray_collision(start_point_y, end_point_y, resolution, ray);
+  bool collision_z = ray_collision(start_point_z, end_point_z, resolution, ray);
+  return collision_x || collision_y || collision_z; // returns true if is there a collision in any axis 
 }
 
 void GazeboRosGridmap::create_octomap(){
