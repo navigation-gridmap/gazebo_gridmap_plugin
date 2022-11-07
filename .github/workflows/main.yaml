@@ -21,7 +21,7 @@ jobs:
         with:
           required-ros-distributions: humble
       - name: build and test
-        uses: ros-tooling/action-ros-ci@0.2.3
+        uses: ros-tooling/action-ros-ci@0.2.6
         with:
           package-name: gazebo_gridmap_plugin
           import-token: ${{secrets.GITHUB_TOKEN}}
