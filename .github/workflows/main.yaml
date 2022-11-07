@@ -34,5 +34,5 @@ jobs:
                 ]
               }
             }
-          vcs-repo-file-url: https://raw.githubusercontent.com/fmrico/gazebo_gridmap_plugin/main/dependency_repos.repos
+          vcs-repo-file-url: https://raw.githubusercontent.com/ivrolan/gazebo_gridmap_plugin/main/dependency_repos.repos
 
