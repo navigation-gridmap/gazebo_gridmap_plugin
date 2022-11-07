@@ -276,7 +276,7 @@ void GazeboRosGridmap::create_gridmap()
 
   impl_->gridmap_.setFrameId("map");
   impl_->gridmap_.setGeometry(
-    grid_map::Length(size_x * 2.0, size_y * 2.0), resolution,
+    grid_map::Length(size_x, size_y), resolution,
     grid_map::Position(center_x, center_y));
 
   gazebo::physics::PhysicsEnginePtr engine = impl_->world_->Physics();
@@ -286,24 +286,34 @@ void GazeboRosGridmap::create_gridmap()
     engine->CreateShape("ray", gazebo::physics::CollisionPtr()));
 
   // Surface
-  for (double x = min_x; x < max_x; x += resolution) {
-    for (double y = min_y; y < max_y; y += resolution) {
-      ignition::math::Vector3d point(x, y, 0);
-      impl_->gridmap_.atPosition("elevation", grid_map::Position(x, y)) =
-        get_surface(point, min_z, max_z, resolution, ray);
-    }
+  // iterate the gridmap and fill each cell
+  for (grid_map::GridMapIterator grid_iterator(impl_->gridmap_); !grid_iterator.isPastEnd();
+    ++grid_iterator)
+  {
+    // get the value at the iterator
+    grid_map::Position current_pos;
+    impl_->gridmap_.getPosition(*grid_iterator, current_pos);
+    ignition::math::Vector3d point(current_pos.x(), current_pos.y(), 0);
+
+    // get the height at this point
+    impl_->gridmap_.atPosition("elevation", current_pos) =
+      get_surface(point, min_z, max_z, resolution, ray);
   }
 
   std::cout << "Surface completed " << std::endl;
 
   // Obstacles
-  for (double x = min_x; x < max_x; x += resolution) {
-    for (double y = min_y; y < max_y; y += resolution) {
-      ignition::math::Vector3d point(x, y, 0);
-      double surface = impl_->gridmap_.atPosition("elevation", grid_map::Position(x, y));
-      if (is_obstacle(point, surface, min_height, max_height, resolution, ray)) {
-        impl_->gridmap_.atPosition("occupancy", grid_map::Position(x, y)) = 254;
-      }
+  for (grid_map::GridMapIterator obs_it(impl_->gridmap_); !obs_it.isPastEnd(); ++obs_it) {
+    // get the value at the iterator
+    grid_map::Position current_pos;
+    impl_->gridmap_.getPosition(*obs_it, current_pos);
+    ignition::math::Vector3d point(current_pos.x(), current_pos.y(), 0);
+
+    double surface = impl_->gridmap_.atPosition("elevation", current_pos);
+    if (is_obstacle(point, surface, min_height, max_height, resolution, ray)) {
+      impl_->gridmap_.atPosition("occupancy", current_pos) = 254;
+    } else {
+      impl_->gridmap_.atPosition("occupancy", current_pos) = 1.0;  // free space
     }
   }
 
