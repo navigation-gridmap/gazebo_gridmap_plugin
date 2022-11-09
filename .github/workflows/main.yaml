@@ -13,19 +13,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-20.04]
+        os: [ubuntu-22.04]
       fail-fast: false
     steps:
       - name: Setup ROS 2
-        uses: ros-tooling/setup-ros@0.2.1
+        uses: ros-tooling/setup-ros@0.4.1
         with:
-          required-ros-distributions: galactic
+          required-ros-distributions: rolling
       - name: build and test
-        uses: ros-tooling/action-ros-ci@0.2.3
+        uses: ros-tooling/action-ros-ci@0.2.6
         with:
           package-name: gazebo_gridmap_plugin
           import-token: ${{secrets.GITHUB_TOKEN}}
-          target-ros2-distro: galactic
+          target-ros2-distro: rolling
           colcon-defaults: |
             {
               "test": {
@@ -34,5 +34,5 @@ jobs:
                 ]
               }
             }
-          vcs-repo-file-url: https://raw.githubusercontent.com/fmrico/gazebo_gridmap_plugin/main/dependency_repos.repos
+          vcs-repo-file-url: https://raw.githubusercontent.com/ivrolan/gazebo_gridmap_plugin/testing-ci/dependency_repos.repos
 

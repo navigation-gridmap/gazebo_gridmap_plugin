@@ -30,6 +30,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(nav2_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -40,6 +41,9 @@ find_package(tf2_ros REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(grid_map_ros REQUIRED)
 find_package(grid_map_msgs REQUIRED)
+find_package(octomap REQUIRED)
+find_package(octomap_msgs REQUIRED)
+find_package(octomap_ros REQUIRED)
 
 link_directories(${gazebo_dev_LIBRARY_DIRS})
 
@@ -67,6 +71,9 @@ ament_target_dependencies(gazebo_ros_gridmap
   "grid_map_ros"
   "grid_map_msgs"
   "grid_map_core"
+  "octomap_msgs"
+  "octomap_ros"
+  "octomap"
 )
 ament_export_libraries(gazebo_ros_gridmap)
 

@@ -54,10 +54,14 @@ protected:
     const double resolution,
     gazebo::physics::RayShapePtr ray);
   void create_gridmap();
-
+  void create_octomap();
   bool is_obstacle(
     const ignition::math::Vector3d & central_point, double surface,
     const double min_z, const double max_z,
+    const double resolution,
+    gazebo::physics::RayShapePtr ray);
+  bool voxel_is_obstacle(
+    const ignition::math::Vector3d & central_point,
     const double resolution,
     gazebo::physics::RayShapePtr ray);
 

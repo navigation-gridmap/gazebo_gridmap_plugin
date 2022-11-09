@@ -3,7 +3,7 @@ Status](https://github.com/fmrico/gazebo_gridmap_plugin/workflows/main/badge.svg
 
 # gazebo_gridmap_plugin
 
-This gazebo plugin creates and publishes to [ROS2 (Galactic)](https://docs.ros.org/en/galactic/index.html) a [gridmap](https://github.com/ANYbotics/grid_map) with elevation and occupancy.
+This gazebo plugin creates and publishes to [ROS2 (Rolling)](https://docs.ros.org/en/rolling/index.html) a [grid_map](https://github.com/ANYbotics/grid_map) with elevation and occupancy and a [octomap](https://github.com/OctoMap/octomap) representing the 3D space
 
 ## Usage:
 
@@ -31,6 +31,10 @@ This gazebo plugin creates and publishes to [ROS2 (Galactic)](https://docs.ros.o
 ![Captura de pantalla 2022-02-16 20:00:46](https://user-images.githubusercontent.com/3810011/154469799-23fbca08-cc6d-4d6c-8398-eb8dda94342b.png)
 ![Captura de pantalla 2022-02-16 19:59:42](https://user-images.githubusercontent.com/3810011/154469801-a73b0ada-d3db-439d-bc9e-1995696227d5.png)
 ![Captura de pantalla 2022-02-16 19:58:26](https://user-images.githubusercontent.com/3810011/154469802-2878e765-d718-4a81-b234-2b61c3b674c4.png)
+
+### Octomap example
+
+![octomap_example](https://user-images.githubusercontent.com/22964725/199963628-993dd17b-dc56-4f3b-a9cb-8b3f510d9f65.png)
 
 Provided by [@miggsant](https://twitter.com/miggsant/status/1494434063838547977)
 

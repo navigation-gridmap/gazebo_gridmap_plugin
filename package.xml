@@ -20,6 +20,10 @@
   <depend>geometry_msgs</depend>
   <depend>image_transport</depend>
   <depend>nav_msgs</depend>
+  <depend>octomap</depend>
+  <depend>octomap_msgs</depend>
+  <depend>octomap_ros</depend>
+  <depend>nav2_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
