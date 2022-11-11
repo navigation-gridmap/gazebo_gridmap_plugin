@@ -417,6 +417,7 @@ void GazeboRosGridmap::create_octomap()
   double & max_x = impl_->max_scan_x_;
   double & max_y = impl_->max_scan_y_;
   double & max_z = impl_->max_scan_z_;
+  double filter_min;
 
   impl_->octomap_ = std::make_unique<octomap::OcTree>(resolution);
 
@@ -434,6 +435,20 @@ void GazeboRosGridmap::create_octomap()
 
   std::cout << "Octomap completed" << std::endl;
 
+  //filter octomap
+  // iterate the gridmap and set the elevation as max Z possible
+  for (grid_map::GridMapIterator grid_iterator(impl_->gridmap_); !grid_iterator.isPastEnd();
+    ++grid_iterator)
+  {
+    // get the value at the iterator
+    grid_map::Position current_pos;
+    impl_->gridmap_.getPosition(*grid_iterator, current_pos);
+    filter_min = impl_->gridmap_.atPosition("elevation", current_pos);
+
+    for (double k = min_z; k < filter_min + resolution; k += resolution) {
+      impl_->octomap_->deleteNode(current_pos.x(), current_pos.y(), k);
+    }
+  }
   octomap_msgs::msg::Octomap message;
 
   octomap_msgs::fullMapToMsg(*(impl_->octomap_), message);
