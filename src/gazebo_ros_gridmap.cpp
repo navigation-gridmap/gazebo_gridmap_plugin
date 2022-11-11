@@ -429,7 +429,7 @@ void GazeboRosGridmap::create_octomap()
 
   std::cout << "Octomap completed" << std::endl;
 
-  //filter octomap
+  // filter octomap
   // iterate the gridmap and set the elevation as max Z possible
   for (grid_map::GridMapIterator grid_iterator(impl_->gridmap_); !grid_iterator.isPastEnd();
     ++grid_iterator)
