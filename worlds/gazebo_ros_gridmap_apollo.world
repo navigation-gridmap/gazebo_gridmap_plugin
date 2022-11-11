@@ -572,9 +572,9 @@
       <max_scan_x>30.0</max_scan_x>
       <max_scan_y>30.0</max_scan_y>
       <max_scan_z>10.0</max_scan_z>
-      <min_height>1.0</min_height>
+      <min_height>0.12</min_height>
       <max_height>2.0</max_height>
-      <resolution>0.50</resolution>
+      <resolution>0.2</resolution>
     </plugin>
   </world>
 </sdf>
