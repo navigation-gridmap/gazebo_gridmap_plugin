@@ -261,21 +261,15 @@ bool GazeboRosGridmap::is_obstacle(
   std::string entity;
   double dist;
 
-  for (double z = min_z; z < max_z; z = z + resolution) {
-    start_point.X() = central_point.X() - resolution / 2.0;
-    start_point.Y() = central_point.Y();
-    start_point.Z() = surface + z;
+  start_point.Z() = surface + min_z;
 
-    end_point.X() = end_point.X() - resolution / 2.0;
-    start_point.Y() = central_point.Y();
-    start_point.Z() = surface + z;
+  end_point.Z() = surface + max_z;
 
-    ray->SetPoints(start_point, end_point);
-    ray->GetIntersection(dist, entity);
+  ray->SetPoints(start_point, end_point);
+  ray->GetIntersection(dist, entity);
 
-    if (dist < resolution) {
-      return true;
-    }
+  if (dist < max_z - min_z) {
+    return true;
   }
 
   return false;
