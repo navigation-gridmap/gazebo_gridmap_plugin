@@ -229,9 +229,8 @@ void GazeboRosGridmap::OnUpdate()
 
 double GazeboRosGridmap::get_surface(
   const ignition::math::Vector3d & central_point,
-  const double min_z, const double max_z,
-  const double resolution,
-  gazebo::physics::RayShapePtr ray)
+  const double min_z, const double max_z, const double last_valid_z,
+  const double resolution, gazebo::physics::RayShapePtr ray)
 {
   ignition::math::Vector3d start_point = central_point;
   ignition::math::Vector3d end_point = central_point;
@@ -245,7 +244,11 @@ double GazeboRosGridmap::get_surface(
   ray->SetPoints(start_point, end_point);
   ray->GetIntersection(dist, current_entity);
 
-  return start_point.Z() + dist;
+  if (current_entity == "") {
+    return last_valid_z;
+  } else {
+    return start_point.Z() + dist;
+  }
 }
 
 
@@ -313,6 +316,7 @@ void GazeboRosGridmap::create_gridmap()
 
   // Surface
   // iterate the gridmap and fill each cell
+  double height = 0.0;
   for (grid_map::GridMapIterator grid_iterator(impl_->gridmap_); !grid_iterator.isPastEnd();
     ++grid_iterator)
   {
@@ -321,9 +325,10 @@ void GazeboRosGridmap::create_gridmap()
     impl_->gridmap_.getPosition(*grid_iterator, current_pos);
     ignition::math::Vector3d point(current_pos.x(), current_pos.y(), 0);
 
+    height = get_surface(point, min_z, max_z, height, resolution, ray);
+
     // get the height at this point
-    impl_->gridmap_.atPosition("elevation", current_pos) =
-      get_surface(point, min_z, max_z, resolution, ray);
+    impl_->gridmap_.atPosition("elevation", current_pos) = height;
   }
 
   std::cout << "Surface completed " << std::endl;
