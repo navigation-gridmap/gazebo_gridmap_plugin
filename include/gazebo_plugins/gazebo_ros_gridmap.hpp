@@ -50,9 +50,8 @@ protected:
 
   double get_surface(
     const ignition::math::Vector3d & central_point,
-    const double min_z, const double max_z,
-    const double resolution,
-    gazebo::physics::RayShapePtr ray);
+    const double min_z, const double max_z, const double last_valid_z,
+    const double resolution, gazebo::physics::RayShapePtr ray);
   void create_gridmap();
   void create_octomap();
   bool is_obstacle(
