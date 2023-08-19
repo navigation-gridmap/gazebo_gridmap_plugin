@@ -34,6 +34,12 @@
 
 namespace gazebo_plugins
 {
+
+typedef struct {
+  double neightbour_height {0.0};
+  bool processed {false};
+} TFloodCell;
+
 /// Class to hold private data members (PIMPL pattern)
 class GazeboRosGridmapPrivate
 {
@@ -214,14 +220,14 @@ void GazeboRosGridmap::Load(gazebo::physics::WorldPtr _parent, sdf::ElementPtr s
 
 void GazeboRosGridmap::OnUpdate()
 {
+  if (!impl_->octomap_created_) {
+    impl_->octomap_created_ = true;
+    // create_octomap();
+  }
+
   if (!impl_->gridmap_created_) {
     impl_->gridmap_created_ = true;
     create_gridmap();
-  }
-
-  if (!impl_->octomap_created_) {
-    impl_->octomap_created_ = true;
-    create_octomap();
   }
   // Do something every simulation iteration
 }
@@ -234,8 +240,8 @@ double GazeboRosGridmap::get_surface(
 {
   ignition::math::Vector3d start_point = central_point;
   ignition::math::Vector3d end_point = central_point;
-  start_point.Z() = min_z;
-  end_point.Z() = max_z;
+  start_point.Z() = max_z;
+  end_point.Z() = min_z;
 
   double dist = 0.0;
   std::string entity_name;
@@ -247,7 +253,7 @@ double GazeboRosGridmap::get_surface(
   if (current_entity == "") {
     return last_valid_z;
   } else {
-    return start_point.Z() + dist;
+    return start_point.Z() - dist;
   }
 }
 
@@ -308,6 +314,28 @@ void GazeboRosGridmap::create_gridmap()
     boost::dynamic_pointer_cast<gazebo::physics::RayShape>(
     engine->CreateShape("ray", gazebo::physics::CollisionPtr()));
 
+
+  impl_->gridmap_.add("visited", 0.0);
+
+  grid_map::Position current_pos(center_x, center_y);
+  
+  double height = 0.0;
+  ignition::math::Vector3d point(current_pos.x(), current_pos.y(), 0);
+  height = get_surface(point, min_z, max_z, height, resolution, ray);
+    impl_->gridmap_.atPosition("elevation", current_pos) = height;
+  
+  // impl_->gridmap_.atPosition("visited", current_pos) = 10.0;  // Visited
+
+  std::cerr << "InitSurface at = " << height << std::endl;
+
+  flood(current_pos, height, resolution, ray);
+
+  std::cout << "Obstacles completed " << std::endl;
+
+  message = grid_map::GridMapRosConverter::toMessage(impl_->gridmap_);
+  impl_->gridmap_pub_->publish(std::move(message));
+
+  /*
   // Surface
   // iterate the gridmap and fill each cell
   double height = 0.0;
@@ -324,8 +352,10 @@ void GazeboRosGridmap::create_gridmap()
     // get the height at this point
     impl_->gridmap_.atPosition("elevation", current_pos) = height;
   }
+  */
 
-  std::cout << "Surface completed " << std::endl;
+
+  /*grid_map::Position init_pos = find_init_obstacle_flood(impl_->gridmap_, );
 
   // Obstacles
   for (grid_map::GridMapIterator obs_it(impl_->gridmap_); !obs_it.isPastEnd(); ++obs_it) {
@@ -346,8 +376,132 @@ void GazeboRosGridmap::create_gridmap()
 
   std::unique_ptr<grid_map_msgs::msg::GridMap> message;
   message = grid_map::GridMapRosConverter::toMessage(impl_->gridmap_);
-  impl_->gridmap_pub_->publish(std::move(message));
+  impl_->gridmap_pub_->publish(std::move(message));*/
 }
+
+void
+GazeboRosGridmap::flood(const grid_map::Position & current_pos,
+  double current_height, double resolution, gazebo::physics::RayShapePtr ray)
+{
+  const double thr = resolution * 3.0;
+  std::map<grid_map::Position, TFloodCell> pending_poses;
+  pending_poses[current_pos]({current_height, false});
+
+  ignition::math::Vector3d point(0.0, 0.0, 0.0);
+  while (!pending_poses.empty()) {
+    // Process heap
+    grid_map::Position & pos = pending_poses.top();
+    // pending_poses.pop();
+
+    point.x() = pos.x();
+    point.y() = pos.y();
+
+    double new_height = get_surface(point, current_height - thr, current_height + thr, current_height, resolution, ray);
+    if ()
+
+
+    // Insert in the stack
+    grid_map::Position new_pos(pos);
+    new_pos.x() = new_pos.x() + resolution;
+    if (impl_->gridmap_.isInside() && impl_->gridmap_.atPosition("visited", new_pos) < 1.0) {
+      pending_poses.push({new_pos, );
+    }
+
+
+    new_pos.y() = new_pos.y() + resolution;
+    if (impl_->gridmap_.isInside() && impl_->gridmap_.atPosition("visited", new_pos) < 1.0) {pending_poses.push(new_pos);}
+    new_pos.x() = new_pos.x() - resolution;
+    if (impl_->gridmap_.isInside() && impl_->gridmap_.atPosition("visited", new_pos) < 1.0) {pending_poses.push(new_pos);}
+    new_pos.y() = new_pos.y() - resolution;
+    if (impl_->gridmap_.isInside() && impl_->gridmap_.atPosition("visited", new_pos) < 1.0) {pending_poses.push(new_pos);}
+
+  }
+  
+  /*
+  const double thr = 0.3;
+
+  {
+    // X + 1, Y
+    grid_map::Position new_current_pos(current_pos);
+    new_current_pos.x() = new_current_pos.x() + resolution;
+    try {
+      if (impl_->gridmap_.atPosition("visited", new_current_pos) < 1.0) {
+        ignition::math::Vector3d point(new_current_pos.x(), new_current_pos.y(), 0);
+        double new_height = get_surface(point, current_height - thr, current_height + thr, current_height, resolution, ray);
+        if (abs(new_height - current_height) < thr) {
+          impl_->gridmap_.atPosition("visited", current_pos) = 10.0;
+          impl_->gridmap_.atPosition("elevation", current_pos) = new_height;
+          impl_->gridmap_.atPosition("occupancy", current_pos) = 1.0;
+          flood(new_current_pos, new_height, resolution, ray);
+        } else {
+          impl_->gridmap_.atPosition("occupancy", current_pos) = 254;
+        }
+      }
+    } catch (std::out_of_range e) {}
+  }
+
+  {
+    // X, Y + 1
+    grid_map::Position new_current_pos(current_pos);
+    new_current_pos.y() = new_current_pos.y() + resolution;
+    try {
+      if (impl_->gridmap_.atPosition("visited", new_current_pos) < 1.0) {
+        ignition::math::Vector3d point(new_current_pos.x(), new_current_pos.y(), 0);
+        double new_height = get_surface(point, current_height - thr, current_height + thr, current_height, resolution, ray);
+        if (abs(new_height - current_height) < thr) {
+          impl_->gridmap_.atPosition("visited", current_pos) = 10.0;
+          impl_->gridmap_.atPosition("elevation", current_pos) = new_height;
+          impl_->gridmap_.atPosition("occupancy", current_pos) = 1.0;
+          flood(new_current_pos, new_height, resolution, ray);
+        } else {
+          impl_->gridmap_.atPosition("occupancy", current_pos) = 254;
+        }
+      }
+    } catch (std::out_of_range e) {}
+  }
+
+  {
+    // X - 1 , Y
+    grid_map::Position new_current_pos(current_pos);
+    new_current_pos.x() = new_current_pos.x() - resolution;
+    try {
+      if (impl_->gridmap_.atPosition("visited", new_current_pos) < 1.0) {
+        ignition::math::Vector3d point(new_current_pos.x(), new_current_pos.y(), 0);
+        double new_height = get_surface(point, current_height - thr, current_height + thr, current_height, resolution, ray);
+        if (abs(new_height - current_height) < thr) {
+          impl_->gridmap_.atPosition("visited", current_pos) = 10.0;
+          impl_->gridmap_.atPosition("elevation", current_pos) = new_height;
+          impl_->gridmap_.atPosition("occupancy", current_pos) = 1.0;
+          flood(new_current_pos, new_height, resolution, ray);
+        } else {
+          impl_->gridmap_.atPosition("occupancy", current_pos) = 254;
+        }
+      }
+    } catch (std::out_of_range e) {}
+  }
+
+  {
+    // X, Y - 1
+    grid_map::Position new_current_pos(current_pos);
+    new_current_pos.y() = new_current_pos.y() - resolution;
+    try {
+      if (impl_->gridmap_.atPosition("visited", new_current_pos) < 1.0) {
+        ignition::math::Vector3d point(new_current_pos.x(), new_current_pos.y(), 0);
+        double new_height = get_surface(point, current_height - thr, current_height + thr, current_height, resolution, ray);
+        if (abs(new_height - current_height) < thr) {
+          impl_->gridmap_.atPosition("visited", current_pos) = 10.0;
+          impl_->gridmap_.atPosition("elevation", current_pos) = new_height;
+          impl_->gridmap_.atPosition("occupancy", current_pos) = 1.0;
+          flood(new_current_pos, new_height, resolution, ray);
+        } else {
+          impl_->gridmap_.atPosition("occupancy", current_pos) = 254;
+        }
+      }
+    } catch (std::out_of_range e) {}
+  }*/
+
+}
+
 
 bool ray_collision(
   const ignition::math::Vector3d & start,

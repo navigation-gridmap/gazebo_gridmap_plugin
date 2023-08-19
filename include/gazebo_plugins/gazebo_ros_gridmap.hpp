@@ -22,6 +22,7 @@
 #include "gazebo/common/common.hh"
 #include "gazebo/gazebo.hh"
 
+#include "grid_map_ros/grid_map_ros.hpp"
 
 namespace gazebo_plugins
 {
@@ -63,6 +64,9 @@ protected:
     const ignition::math::Vector3d & central_point,
     const double resolution,
     gazebo::physics::RayShapePtr ray);
+
+  void flood(const grid_map::Position & current_pos, double current_height,
+    double resolution, gazebo::physics::RayShapePtr ray);
 
 private:
   /// Recommended PIMPL pattern. This variable should hold all private
