@@ -16,7 +16,10 @@
 #define GAZEBO_PLUGINS__GAZEBO_ROS_GRIDMAP_HPP_
 
 // For std::unique_ptr, could be removed
+#include <Eigen/Dense>
+
 #include <memory>
+#include <stack>
 
 #include "gazebo/physics/physics.hh"
 #include "gazebo/common/common.hh"
@@ -28,6 +31,8 @@ namespace gazebo_plugins
 {
 // Forward declaration of private data class.
 class GazeboRosGridmapPrivate;
+
+typedef Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> MatrixXf;
 
 class GazeboRosGridmap : public gazebo::WorldPlugin
 {
@@ -49,10 +54,16 @@ protected:
   /// Optional callback to be called at every simulation iteration.
   virtual void OnUpdate();
 
-  double get_surface(
+  bool get_surface(
     const ignition::math::Vector3d & central_point,
-    const double min_z, const double max_z, const double last_valid_z,
-    const double resolution, gazebo::physics::RayShapePtr ray);
+    const double min_z, const double max_z,
+    const double resolution, gazebo::physics::RayShapePtr ray,
+    double & height);
+  void process_neighbour(
+    const grid_map::Index & pos, double current_height,
+    double resolution, std::stack<grid_map::Index> & pending_poses,
+    gazebo::physics::RayShapePtr ray, MatrixXf & em);
+
   void create_gridmap();
   void create_octomap();
   bool is_obstacle(
@@ -65,8 +76,10 @@ protected:
     const double resolution,
     gazebo::physics::RayShapePtr ray);
 
-  void flood(const grid_map::Position & current_pos, double current_height,
+  void flood(
+    const grid_map::Position & current_pos, double current_height,
     double resolution, gazebo::physics::RayShapePtr ray);
+  void create_occupancy();
 
 private:
   /// Recommended PIMPL pattern. This variable should hold all private
