@@ -13,6 +13,8 @@
 // limitations under the License.
 
 
+#include <Eigen/Core>
+
 #include <octomap/octomap.h>
 
 #include <memory>
@@ -34,12 +36,19 @@
 
 namespace gazebo_plugins
 {
+
+typedef struct
+{
+  grid_map::Position pos;
+  double last_height {0.0};
+} TFloodCell;
+
 /// Class to hold private data members (PIMPL pattern)
 class GazeboRosGridmapPrivate
 {
 public:
   GazeboRosGridmapPrivate()
-  : gridmap_({"elevation", "occupancy"}) {}
+  : gridmap_() {}
 
   /// Connection to world update event. Callback is called while this is alive.
   gazebo::event::ConnectionPtr update_connection_;
@@ -48,7 +57,9 @@ public:
   gazebo_ros::Node::SharedPtr ros_node_;
 
   gazebo::physics::WorldPtr world_;
-  bool gridmap_created_{false};
+  bool surface_created_{false};
+  bool occupancy_created_{false};
+
   grid_map::GridMap gridmap_;
   bool octomap_created_{false};
   std::unique_ptr<octomap::OcTree> octomap_;
@@ -214,8 +225,8 @@ void GazeboRosGridmap::Load(gazebo::physics::WorldPtr _parent, sdf::ElementPtr s
 
 void GazeboRosGridmap::OnUpdate()
 {
-  if (!impl_->gridmap_created_) {
-    impl_->gridmap_created_ = true;
+  if (!impl_->surface_created_) {
+    impl_->surface_created_ = true;
     create_gridmap();
   }
 
@@ -223,19 +234,25 @@ void GazeboRosGridmap::OnUpdate()
     impl_->octomap_created_ = true;
     create_octomap();
   }
+
+  if (!impl_->occupancy_created_) {
+    impl_->occupancy_created_ = true;
+    create_occupancy();
+  }
   // Do something every simulation iteration
 }
 
 
-double GazeboRosGridmap::get_surface(
+bool GazeboRosGridmap::get_surface(
   const ignition::math::Vector3d & central_point,
-  const double min_z, const double max_z, const double last_valid_z,
-  const double resolution, gazebo::physics::RayShapePtr ray)
+  const double min_z, const double max_z,
+  const double resolution, gazebo::physics::RayShapePtr ray,
+  double & height)
 {
   ignition::math::Vector3d start_point = central_point;
   ignition::math::Vector3d end_point = central_point;
-  start_point.Z() = min_z;
-  end_point.Z() = max_z;
+  start_point.Z() = max_z;
+  end_point.Z() = min_z;
 
   double dist = 0.0;
   std::string entity_name;
@@ -245,9 +262,10 @@ double GazeboRosGridmap::get_surface(
   ray->GetIntersection(dist, current_entity);
 
   if (current_entity == "") {
-    return last_valid_z;
+    return false;
   } else {
-    return start_point.Z() + dist;
+    height = start_point.Z() - dist;
+    return true;
   }
 }
 
@@ -295,8 +313,7 @@ void GazeboRosGridmap::create_gridmap()
   double size_x = max_x - min_x;
   double size_y = max_y - min_y;
 
-  std::cerr << "Creating gridmap (" << size_x << " x " << size_y << ")" << std::endl;
-
+  std::cerr << "Creating surface" << std::endl;
   impl_->gridmap_.setFrameId("map");
   impl_->gridmap_.setGeometry(
     grid_map::Length(size_x, size_y), resolution,
@@ -308,46 +325,223 @@ void GazeboRosGridmap::create_gridmap()
     boost::dynamic_pointer_cast<gazebo::physics::RayShape>(
     engine->CreateShape("ray", gazebo::physics::CollisionPtr()));
 
-  // Surface
-  // iterate the gridmap and fill each cell
+  impl_->gridmap_.add("elevation");
+  impl_->gridmap_.add("occupancy");
+  grid_map::Position current_pos(center_x, center_y);
+
   double height = 0.0;
-  for (grid_map::GridMapIterator grid_iterator(impl_->gridmap_); !grid_iterator.isPastEnd();
-    ++grid_iterator)
-  {
-    // get the value at the iterator
-    grid_map::Position current_pos;
-    impl_->gridmap_.getPosition(*grid_iterator, current_pos);
-    ignition::math::Vector3d point(current_pos.x(), current_pos.y(), 0);
-
-    height = get_surface(point, min_z, max_z, height, resolution, ray);
-
-    // get the height at this point
+  ignition::math::Vector3d point(current_pos.x(), current_pos.y(), 0);
+  if (get_surface(point, min_z, max_z, resolution, ray, height)) {
     impl_->gridmap_.atPosition("elevation", current_pos) = height;
   }
 
+  flood(current_pos, height, resolution, ray);
+
+  create_occupancy();
+
+
   std::cout << "Surface completed " << std::endl;
-
-  // Obstacles
-  for (grid_map::GridMapIterator obs_it(impl_->gridmap_); !obs_it.isPastEnd(); ++obs_it) {
-    // get the value at the iterator
-    grid_map::Position current_pos;
-    impl_->gridmap_.getPosition(*obs_it, current_pos);
-    ignition::math::Vector3d point(current_pos.x(), current_pos.y(), 0);
-
-    double surface = impl_->gridmap_.atPosition("elevation", current_pos);
-    if (is_obstacle(point, surface, min_height, max_height, resolution, ray)) {
-      impl_->gridmap_.atPosition("occupancy", current_pos) = 254;
-    } else {
-      impl_->gridmap_.atPosition("occupancy", current_pos) = 1.0;  // free space
-    }
-  }
-
-  std::cout << "Obstacles completed " << std::endl;
 
   std::unique_ptr<grid_map_msgs::msg::GridMap> message;
   message = grid_map::GridMapRosConverter::toMessage(impl_->gridmap_);
   impl_->gridmap_pub_->publish(std::move(message));
 }
+
+void
+GazeboRosGridmap::process_neighbour(
+  const grid_map::Index & pos, double current_height,
+  double resolution, std::stack<grid_map::Index> & pending_poses,
+  gazebo::physics::RayShapePtr ray, MatrixXf & em)
+{
+  const double thr = resolution * 1.0;
+  double height;
+
+  grid_map::Position metric_pos;
+
+  if (!impl_->gridmap_.getPosition(pos, metric_pos)) {
+    return;
+  }
+
+  grid_map::Index debug_idx;
+  grid_map::Position debug_pos(-11.0, 13.10);
+  impl_->gridmap_.getIndex(debug_pos, debug_idx);
+
+  ignition::math::Vector3d point(metric_pos.x(), metric_pos.y(), 0.0);
+
+  bool there_is_surface = get_surface(
+    point, current_height - (thr), current_height + (thr), resolution, ray, height);
+  bool already_visited = !std::isnan(em(pos(0), pos(1)));
+  double diff = height - em(pos(0), pos(1));
+
+
+  if (there_is_surface && (!already_visited)) {
+    em(pos(0), pos(1)) = height;
+    pending_poses.push(pos);
+  } else if (there_is_surface && diff > thr) {
+    em(pos(0), pos(1)) = height;
+
+    grid_map::Index n_pos(pos);
+    n_pos(0) = n_pos(0) + 1;
+    pending_poses.push(n_pos);
+
+    grid_map::Index w_pos(pos);
+    w_pos(1) = w_pos(1) + 1;
+    pending_poses.push(w_pos);
+
+    grid_map::Index e_pos(pos);
+    e_pos(1) = e_pos(1) - 1;
+    pending_poses.push(e_pos);
+
+    grid_map::Index s_pos(pos);
+    s_pos(0) = s_pos(0) - 1;
+    pending_poses.push(s_pos);
+  }
+}
+
+void
+GazeboRosGridmap::flood(
+  const grid_map::Position & current_pos,
+  double current_height, double resolution, gazebo::physics::RayShapePtr ray)
+{
+  MatrixXf em(impl_->gridmap_.getSize()(0), impl_->gridmap_.getSize()(1));
+  for (auto i = 0; i < impl_->gridmap_.getSize()(0); i++) {
+    for (auto j = 0; j < impl_->gridmap_.getSize()(1); j++) {
+      em(i, j) = NAN;
+    }
+  }
+
+  std::stack<grid_map::Index> pending_poses;
+
+  grid_map::Index init_index;
+  if (!impl_->gridmap_.getIndex(current_pos, init_index)) {
+    return;
+  }
+
+  pending_poses.push(init_index);
+  em(init_index(0), init_index(1)) = current_height;
+
+  int counter_flood = 0;
+  while (!pending_poses.empty()) {
+    grid_map::Index cell = pending_poses.top();
+    pending_poses.pop();
+
+    process_neighbour(cell, current_height, resolution, pending_poses, ray, em);
+    current_height = em(cell(0), cell(1));
+
+    // Check N cell
+    grid_map::Index n_pos(cell);
+    n_pos(0) = n_pos(0) + 1;
+    process_neighbour(n_pos, current_height, resolution, pending_poses, ray, em);
+
+    grid_map::Index w_pos(cell);
+    w_pos(1) = w_pos(1) + 1;
+    process_neighbour(w_pos, current_height, resolution, pending_poses, ray, em);
+
+    grid_map::Index e_pos(cell);
+    e_pos(1) = e_pos(1) - 1;
+    process_neighbour(e_pos, current_height, resolution, pending_poses, ray, em);
+
+    grid_map::Index s_pos(cell);
+    s_pos(0) = s_pos(0) - 1;
+    process_neighbour(s_pos, current_height, resolution, pending_poses, ray, em);
+
+    counter_flood++;
+  }
+
+  for (auto i = 0; i < impl_->gridmap_.getSize()(0); i++) {
+    for (auto j = 0; j < impl_->gridmap_.getSize()(1); j++) {
+      grid_map::Index map_index(i, j);
+      impl_->gridmap_.at("elevation", map_index) = em(i, j);
+    }
+  }
+
+  // Fill holes
+  double height = 0.0;
+  for (grid_map::GridMapIterator grid_iterator(impl_->gridmap_); !grid_iterator.isPastEnd();
+    ++grid_iterator)
+  {
+    grid_map::Position pos;
+    impl_->gridmap_.getPosition(*grid_iterator, pos);
+
+    double cell_height = impl_->gridmap_.atPosition("elevation", pos);
+    if (cell_height == NAN) {
+      impl_->gridmap_.atPosition("elevation", pos) = height;
+    } else {
+      height = cell_height;
+    }
+  }
+}
+
+void
+GazeboRosGridmap::create_occupancy()
+{
+  std::cerr << "Creating occupancy" << std::endl;
+
+  float res = static_cast<float>(impl_->resolution_);
+  double & max_height = impl_->max_height_;
+  double & min_height = impl_->min_height_;
+
+  gazebo::physics::PhysicsEnginePtr engine = impl_->world_->Physics();
+  engine->InitForThread();
+  gazebo::physics::RayShapePtr ray =
+    boost::dynamic_pointer_cast<gazebo::physics::RayShape>(
+    engine->CreateShape("ray", gazebo::physics::CollisionPtr()));
+
+
+  for (auto i = 0; i < impl_->gridmap_.getSize()(0); i++) {
+    for (auto j = 0; j < impl_->gridmap_.getSize()(1); j++) {
+      grid_map::Index idx(i, j);
+      impl_->gridmap_.at("occupancy", idx) = 1.0;
+    }
+  }
+
+  for (auto i = 0; i < impl_->gridmap_.getSize()(0); i++) {
+    for (auto j = 0; j < impl_->gridmap_.getSize()(1); j++) {
+      grid_map::Index idx(i, j);
+      float height = impl_->gridmap_.at("elevation", idx);
+
+      float diff_n(0.0), diff_s(0.0), diff_w(0.0), diff_e(0.0);
+
+      // Check N cell
+      grid_map::Index n_pos(idx);
+      n_pos(0) = n_pos(0) + 1;
+      if (impl_->gridmap_.isValid(n_pos, "elevation")) {
+        diff_n = abs(impl_->gridmap_.at("elevation", n_pos) - height);
+      }
+
+      grid_map::Index w_pos(idx);
+      w_pos(1) = w_pos(1) + 1;
+      if (impl_->gridmap_.isValid(w_pos, "elevation")) {
+        diff_w = abs(impl_->gridmap_.at("elevation", w_pos) - height);
+      }
+
+      grid_map::Index e_pos(idx);
+      e_pos(1) = e_pos(1) - 1;
+      if (impl_->gridmap_.isValid(e_pos, "elevation")) {
+        diff_e = abs(impl_->gridmap_.at("elevation", e_pos) - height);
+      }
+
+      grid_map::Index s_pos(idx);
+      s_pos(0) = s_pos(0) - 1;
+      if (impl_->gridmap_.isValid(s_pos, "elevation")) {
+        diff_s = abs(impl_->gridmap_.at("elevation", s_pos) - height);
+      }
+
+      grid_map::Position pos;
+      impl_->gridmap_.getPosition(n_pos, pos);
+      ignition::math::Vector3d point(pos(0), pos(1), 0.0);
+
+      bool obstacle = is_obstacle(point, height, min_height, max_height, res, ray);
+
+      if (obstacle || diff_n > res || diff_s > res || diff_w > res || diff_e > res) {
+        impl_->gridmap_.at("occupancy", idx) = 254.0;
+      }
+    }
+  }
+
+  std::cerr << "Occupancy created" << std::endl;
+}
+
 
 bool ray_collision(
   const ignition::math::Vector3d & start,
@@ -436,6 +630,7 @@ void GazeboRosGridmap::create_octomap()
 
   // filter octomap
   // iterate the gridmap and set the elevation as max Z possible
+  /*
   for (grid_map::GridMapIterator grid_iterator(impl_->gridmap_); !grid_iterator.isPastEnd();
     ++grid_iterator)
   {
@@ -447,7 +642,7 @@ void GazeboRosGridmap::create_octomap()
     for (double k = min_z; k < filter_min + resolution; k += resolution) {
       impl_->octomap_->deleteNode(current_pos.x(), current_pos.y(), k);
     }
-  }
+  } */
   octomap_msgs::msg::Octomap message;
 
   octomap_msgs::fullMapToMsg(*(impl_->octomap_), message);
