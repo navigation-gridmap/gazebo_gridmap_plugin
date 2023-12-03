@@ -57,8 +57,12 @@ public:
   gazebo_ros::Node::SharedPtr ros_node_;
 
   gazebo::physics::WorldPtr world_;
-  bool surface_created_{false};
-  bool occupancy_created_{false};
+  bool surface_started_{false};
+  bool surface_finished_{false};
+  bool occupancy_started_{false};
+  bool occupancy_finished_{false};
+  bool octomap_started_{false};
+  bool octomap_finished_{false};
 
   grid_map::GridMap gridmap_;
   bool octomap_created_{false};
@@ -225,21 +229,33 @@ void GazeboRosGridmap::Load(gazebo::physics::WorldPtr _parent, sdf::ElementPtr s
 
 void GazeboRosGridmap::OnUpdate()
 {
-  if (!impl_->surface_created_) {
-    impl_->surface_created_ = true;
+  if (!impl_->surface_started_) {
+    impl_->surface_started_ = true;
     create_gridmap();
+    impl_->surface_finished_ = true;
   }
 
-  if (!impl_->octomap_created_) {
-    impl_->octomap_created_ = true;
+  if (impl_->surface_finished_ && !impl_->octomap_started_) {
+    impl_->octomap_started_ = true;
     create_octomap();
+    impl_->octomap_finished_ = true;
   }
 
-  if (!impl_->occupancy_created_) {
-    impl_->occupancy_created_ = true;
+  if (impl_->octomap_finished_ && !impl_->occupancy_started_) {
+    impl_->occupancy_started_ = true;
     create_occupancy();
+    impl_->occupancy_finished_ = true;
+
+    std::unique_ptr<grid_map_msgs::msg::GridMap> message;
+    message = grid_map::GridMapRosConverter::toMessage(impl_->gridmap_);
+    impl_->gridmap_pub_->publish(std::move(message));
+
+    octomap_msgs::msg::Octomap octo_message;
+    octomap_msgs::fullMapToMsg(*(impl_->octomap_), octo_message);
+    octo_message.header.frame_id = "map";
+    octo_message.header.stamp = impl_->ros_node_->get_clock()->now();
+    impl_->octomap_pub_->publish(octo_message);
   }
-  // Do something every simulation iteration
 }
 
 
@@ -337,14 +353,7 @@ void GazeboRosGridmap::create_gridmap()
 
   flood(current_pos, height, resolution, ray);
 
-  create_occupancy();
-
-
   std::cout << "Surface completed " << std::endl;
-
-  std::unique_ptr<grid_map_msgs::msg::GridMap> message;
-  message = grid_map::GridMapRosConverter::toMessage(impl_->gridmap_);
-  impl_->gridmap_pub_->publish(std::move(message));
 }
 
 void
@@ -539,6 +548,24 @@ GazeboRosGridmap::create_occupancy()
     }
   }
 
+  for (auto it = impl_->octomap_->begin_leafs(); it != impl_->octomap_->end_leafs(); ++it) {
+    if (it->getOccupancy() > 0.0) {
+      double wx = it.getX();
+      double wy = it.getY();
+      double wz = it.getZ();
+
+      grid_map::Position position(wx, wy);
+      grid_map::Index idx;
+      impl_->gridmap_.getIndex(position, idx);
+
+      float height = impl_->gridmap_.at("elevation", idx);
+
+      if ((wz > (impl_->min_height_ + height)) && (wz < (impl_->max_height_ + height))) {
+        impl_->gridmap_.at("occupancy", idx) = 254.0;
+      }
+    }
+  }
+
   std::cerr << "Occupancy created" << std::endl;
 }
 
@@ -587,10 +614,13 @@ bool GazeboRosGridmap::voxel_is_obstacle(
   end_point_z.Z() = end_point_z.Z() + resolution / 2;
 
   bool collision_x = ray_collision(start_point_x, end_point_x, resolution, ray);
+  bool collision_xi = ray_collision(end_point_x, start_point_x, resolution, ray);
   bool collision_y = ray_collision(start_point_y, end_point_y, resolution, ray);
+  bool collision_yi = ray_collision(end_point_y, start_point_y, resolution, ray);
   bool collision_z = ray_collision(start_point_z, end_point_z, resolution, ray);
+  bool collision_zi = ray_collision(end_point_z, start_point_z, resolution, ray);
   // returns true if is there a collision in any axis
-  return collision_x || collision_y || collision_z;
+  return collision_x || collision_y || collision_z || collision_xi || collision_yi || collision_zi;
 }
 
 void GazeboRosGridmap::create_octomap()
@@ -627,28 +657,6 @@ void GazeboRosGridmap::create_octomap()
   }
 
   std::cout << "Octomap completed" << std::endl;
-
-  // filter octomap
-  // iterate the gridmap and set the elevation as max Z possible
-  /*
-  for (grid_map::GridMapIterator grid_iterator(impl_->gridmap_); !grid_iterator.isPastEnd();
-    ++grid_iterator)
-  {
-    // get the value at the iterator
-    grid_map::Position current_pos;
-    impl_->gridmap_.getPosition(*grid_iterator, current_pos);
-    filter_min = impl_->gridmap_.atPosition("elevation", current_pos);
-
-    for (double k = min_z; k < filter_min + resolution; k += resolution) {
-      impl_->octomap_->deleteNode(current_pos.x(), current_pos.y(), k);
-    }
-  } */
-  octomap_msgs::msg::Octomap message;
-
-  octomap_msgs::fullMapToMsg(*(impl_->octomap_), message);
-  message.header.frame_id = "map";
-  message.header.stamp = impl_->ros_node_->get_clock()->now();
-  impl_->octomap_pub_->publish(message);
 }
 
 // Register this plugin with the simulator
